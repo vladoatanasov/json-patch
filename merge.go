@@ -158,7 +158,7 @@ func CreateMergePatch(a, b []byte) ([]byte, error) {
 	if err != nil {
 		return nil, errBadJSONDoc
 	}
-	dest, err := getDiff(aI, bI)
+	_, dest, err := GetDiff(aI, bI)
 	if err != nil {
 		return nil, err
 	}
@@ -222,18 +222,22 @@ func matchesValue(av, bv interface{}) bool {
 	return false
 }
 
-// getDiff returns the (recursive) difference between a and b as a map[string]interface{}.
-func getDiff(a, b map[string]interface{}) (map[string]interface{}, error) {
+// GetDiff returns the (recursive) difference between a and b as a map[string]interface{}.
+func GetDiff(a, b map[string]interface{}) (map[string]interface{}, map[string]interface{}, error) {
 	into := map[string]interface{}{}
+	from := map[string]interface{}{}
+
 	for key, bv := range b {
 		av, ok := a[key]
 		// value was added
 		if !ok {
+			from[key] = av
 			into[key] = bv
 			continue
 		}
 		// If types have changed, replace completely
 		if reflect.TypeOf(av) != reflect.TypeOf(bv) {
+			from[key] = av
 			into[key] = bv
 			continue
 		}
@@ -242,20 +246,23 @@ func getDiff(a, b map[string]interface{}) (map[string]interface{}, error) {
 		case map[string]interface{}:
 			bt := bv.(map[string]interface{})
 			dst := make(map[string]interface{}, len(bt))
-			dst, err := getDiff(at, bt)
+			_, dst, err := GetDiff(at, bt)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			if len(dst) > 0 {
+				from[key] = at
 				into[key] = dst
 			}
 		case string, float64, bool:
 			if !matchesValue(av, bv) {
+				from[key] = av
 				into[key] = bv
 			}
 		case []interface{}:
 			bt := bv.([]interface{})
 			if !matchesArray(at, bt) {
+				from[key] = at
 				into[key] = bv
 			}
 		case nil:
@@ -263,6 +270,7 @@ func getDiff(a, b map[string]interface{}) (map[string]interface{}, error) {
 			case nil:
 				// Both nil, fine.
 			default:
+				from[key] = at
 				into[key] = bv
 			}
 		default:
@@ -276,5 +284,5 @@ func getDiff(a, b map[string]interface{}) (map[string]interface{}, error) {
 			into[key] = nil
 		}
 	}
-	return into, nil
+	return from, into, nil
 }
